@@ -1,0 +1,113 @@
+import { useState, useEffect } from "react";
+import axios from "axios";
+
+export default function ReportForm() {
+  const [report, setReport] = useState("");
+  const [result, setResult] = useState(null);
+  const [translatedOutcome, setTranslatedOutcome] = useState("");
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [translating, setTranslating] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    fetchHistory();
+  }, []);
+
+  const fetchHistory = async () => {
+    try {
+      const response = await axios.get("http://localhost:8000/reports");
+      setHistory(response.data);
+    } catch {
+      setError("Unable to fetch report history.");
+    }
+  };
+
+  const handleSubmit = async () => {
+    setLoading(true);
+    setError("");
+    setTranslatedOutcome("");
+    try {
+      const response = await axios.post("http://localhost:8000/process-report", { report });
+      setResult(response.data);
+      await fetchHistory();
+    } catch {
+      setError("Unable to process the report. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTranslate = async () => {
+    if (!result?.outcome) return;
+    setTranslating(true);
+    try {
+      const response = await axios.post("http://localhost:8000/translate", {
+        text: result.outcome,
+        target_lang: "fr"
+      });
+      setTranslatedOutcome(response.data.translated_text);
+    } catch {
+      setError("Translation failed. Please try again.");
+    } finally {
+      setTranslating(false);
+    }
+  };
+
+  return (
+    <div className="p-6 max-w-xl mx-auto">
+      <textarea
+        className="border p-2 w-full rounded"
+        rows={5}
+        placeholder="Enter medical report..."
+        value={report}
+        onChange={(e) => setReport(e.target.value)}
+      />
+      <button
+        onClick={handleSubmit}
+        disabled={loading || !report.trim()}
+        className={`mt-2 px-4 py-2 text-white rounded ${loading ? "bg-gray-400" : "bg-blue-500 hover:bg-blue-600"}`}
+      >
+        {loading ? "Processing..." : "Process Report"}
+      </button>
+
+      {error && <p className="text-red-500 mt-2">{error}</p>}
+
+      {result && (
+        <div className="mt-4 border p-4 rounded bg-gray-100">
+          <h2 className="font-bold mb-2">Processed Report</h2>
+          <p><b>Drug:</b> {result.drug || "N/A"}</p>
+          <p><b>Adverse Events:</b> {(result.adverse_events || []).join(", ") || "None"}</p>
+          <p><b>Severity:</b> {result.severity || "Unknown"}</p>
+          <p>
+            <b>Outcome:</b> {result.outcome || "Unknown"} 
+            {translatedOutcome && <> / {translatedOutcome}</>}
+          </p>
+          <button
+            onClick={handleTranslate}
+            disabled={translating}
+            className={`mt-2 px-3 py-1 text-white rounded ${translating ? "bg-gray-400" : "bg-green-500 hover:bg-green-600"}`}
+          >
+            {translating ? "Translating..." : "Translate Outcome"}
+          </button>
+        </div>
+      )}
+
+      {history.length > 0 && (
+        <div className="mt-6">
+          <h2 className="font-bold mb-2">Report History</h2>
+          <ul className="space-y-2">
+            {history.map((item, index) => (
+              <li key={index} className="border p-2 rounded bg-gray-50">
+                <p><b>Drug:</b> {item.drug || "N/A"}</p>
+                <p><b>Adverse Events:</b> {(item.adverse_events || []).join(", ") || "None"}</p>
+                <p><b>Severity:</b> {item.severity || "Unknown"}</p>
+                <p><b>Outcome:</b> {item.outcome || "Unknown"}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
